@@ -1,0 +1,30 @@
+### Servidor
+- Maneja la lógica del sistema
+- Controla productos y órdenes
+- Atiende múltiples clientes al mismo tiempo
+- Registra acciones en `server.log`
+
+### Administrador
+- Se conecta directamente al servidor
+- Permite agregar productos
+- Permite actualizar stock
+- Permite actualizar precios
+- Permite consultar historial de órdenes
+
+## COMANDOS ADMINISTRADOR
+ADD_PRODUCT <id> <name> <price> <stock>
+UPDATE_STOCK <id> <nuevo_stock>
+UPDATE_PRICE <id> <nuevo_precio>
+LIST_ORDERS
+
+### Cliente
+- Permite a los usuarios comprar productos
+- Maneja el carrito de compras
+- Permite generar órdenes
+
+##termianl 1 
+- go run cmd/server/server.go
+##terminal 2
+- nc localhost 8000
+##termianl 3
+- go run cmd/client/client.go
