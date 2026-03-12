@@ -1,30 +1,140 @@
-### Servidor
-- Maneja la lógica del sistema
-- Controla productos y órdenes
-- Atiende múltiples clientes al mismo tiempo
-- Registra acciones en `server.log`
+# SuperMercadoUP
 
-### Administrador
-- Se conecta directamente al servidor
-- Permite agregar productos
-- Permite actualizar stock
-- Permite actualizar precios
-- Permite consultar historial de órdenes
+Sistema cliente-servidor en Go que simula un motor de inventario y procesamiento 
+de órdenes similar al de una plataforma de e-commerce.
 
-## COMANDOS ADMINISTRADOR
-ADD_PRODUCT <id> <name> <price> <stock>
-UPDATE_STOCK <id> <nuevo_stock>
-UPDATE_PRICE <id> <nuevo_precio>
-LIST_ORDERS
+## Descripción del proyecto
 
-### Cliente
-- Permite a los usuarios comprar productos
-- Maneja el carrito de compras
-- Permite generar órdenes
+SuperMercadoUP es un sistema TCP concurrente desarrollado en Go que permite 
+administrar productos, gestionar carritos de compra y procesar órdenes con 
+consistencia bajo concurrencia. El sistema cuenta con tres componentes principales:
 
-##termianl 1 
-- go run cmd/server/server.go
-##terminal 2
-- nc localhost 8000
-##termianl 3
-- go run cmd/client/client.go
+- **Servidor**: maneja la lógica del negocio, controla el inventario compartido 
+  entre todos los clientes y registra todas las acciones en `server.log`
+- **Cliente**: permite a los usuarios listar productos, agregar al carrito y 
+  realizar órdenes
+- **Administrador**: permite gestionar el inventario agregando productos, 
+  actualizando stock y precios, y consultando el historial de órdenes
+
+## Instrucciones
+
+### Requisitos
+- Go 1.21 o superior
+
+### Clonar el repositorio
+```
+git clone https://github.com/DemianVGLl2/SuperMercadoUP.git
+cd SuperMercadoUP
+```
+
+### Correr el servidor
+Abre una terminal y ejecuta:
+```
+go run cmd/server/server.go
+```
+El servidor escucha en `localhost:8000` y crea el archivo `server.log` 
+en la misma carpeta.
+
+### Conectar un cliente
+Abre una segunda terminal:
+```
+go run cmd/client/client.go
+```
+
+### Conectar el administrador
+Abre una tercera terminal:
+```
+go run cmd/admin/admin.go
+```
+
+Se pueden conectar múltiples clientes y administradores simultáneamente.
+
+## Ejemplos de funcionalidades del administrador
+
+### Agregar un producto
+```
+Choose an option: 1
+Enter product ID: 4
+Enter product name: Mantequilla
+Enter price: 35.0
+Enter stock: 20
+OK producto agregado
+```
+
+### Actualizar stock
+```
+Choose an option: 2
+Enter product ID: 1
+Enter new stock: 50
+OK stock actualizado
+```
+
+### Actualizar precio
+```
+Choose an option: 3
+Enter product ID: 2
+Enter new price: 18.5
+OK precio actualizado
+```
+
+### Ver historial de órdenes
+```
+Choose an option: 4
+Order history:
+--------------
+OrderID:1 Total:57.00 Status:COMPLETED
+OrderID:2 Total:84.00 Status:COMPLETED
+```
+
+## Ejemplos de funcionalidades del cliente
+
+### Listar productos
+```
+Choose an option: 1
+Available products:
+ID | Name | Price | Stock
+--------------------------
+1 | Leche | 28.50 | 10
+2 | Pan | 15.00 | 8
+3 | Huevos | 42.00 | 12
+```
+
+### Agregar al carrito
+```
+Choose an option: 2
+Enter product ID: 1
+Enter quantity: 2
+OK producto agregado al carrito
+```
+
+### Ver carrito
+```
+Choose an option: 3
+Cart contents:
+ProductID | Name | Qty | UnitPrice | Subtotal
+---------------------------------------------
+1 | Leche | 2 | 28.50 | 57.00
+Total: 57.00
+```
+
+### Realizar orden
+```
+Choose an option: 4
+OK
+Orden creada con id 1
+Total: 57.00
+Status: COMPLETED
+```
+
+## Trabajo futuro
+
+1. **Persistencia del estado**: guardar el inventario y las órdenes en un archivo 
+   JSON al apagar el servidor para poder restaurar el estado al reiniciarlo.
+
+2. **Registro de usuarios**: permitir que clientes y administradores se registren 
+   con usuario y contraseña para mantener historial de compras por usuario y 
+   control de acceso por rol.
+
+3. **Bloqueo de productos en carrito**: cuando un cliente agrega un producto al 
+   carrito, bloquear ese stock temporalmente para que otros clientes no puedan 
+   comprarlo hasta que se libere o se complete la orden.

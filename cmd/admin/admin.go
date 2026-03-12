@@ -19,16 +19,9 @@ type Product struct {
 	Stock int
 }
 
-type CartItem struct {
-	ProductID int
-	Name      string
-	Quantity  int
-	UnitPrice float64
-}
-
 func main() {
 	fmt.Println("===================================")
-	fmt.Println("      SuperMercadoUP - Client")
+	fmt.Println("      SuperMercadoUP - Admin")
 	fmt.Println("===================================")
 
 	conn, err := net.DialTimeout("tcp", serverAddress, 5*time.Second)
@@ -56,15 +49,15 @@ func main() {
 
 		switch option {
 		case "1":
-			listProducts(conn, reader)
+			addProduct(conn, reader, console)
 		case "2":
-			addToCart(conn, reader, console)
+			updateStock(conn, reader, console)
 		case "3":
-			viewCart(conn, reader)
+			updatePrice(conn, reader, console)
 		case "4":
-			placeOrder(conn, reader)
+			listOrders(conn, reader)
 		case "5":
-			showHelp(conn, reader)
+			listProducts(conn, reader)
 		case "0":
 			exitClient(conn, reader)
 			fmt.Println("Disconnected from server.")
@@ -78,11 +71,11 @@ func main() {
 func showMenu() {
 	fmt.Println()
 	fmt.Println("------------- MENU -------------")
-	fmt.Println("1) List products")
-	fmt.Println("2) Add product to cart")
-	fmt.Println("3) View cart")
-	fmt.Println("4) Place order")
-	fmt.Println("5) Help")
+	fmt.Println("1) Add products")
+	fmt.Println("2) Update stock")
+	fmt.Println("3) Update price")
+	fmt.Println("4) List orders")
+	fmt.Println("5) List products")
 	fmt.Println("0) Exit")
 	fmt.Println("--------------------------------")
 }
@@ -132,142 +125,6 @@ func listProducts(conn net.Conn, reader *bufio.Reader) {
 			continue
 		}
 		fmt.Printf("%d | %s | %.2f | %d\n", product.ID, product.Name, product.Price, product.Stock)
-	}
-}
-
-func addToCart(conn net.Conn, reader *bufio.Reader, console *bufio.Reader) {
-	productID, ok := askInt(console, "Enter product ID: ")
-	if !ok {
-		return
-	}
-
-	quantity, ok := askInt(console, "Enter quantity: ")
-	if !ok {
-		return
-	}
-
-	if quantity <= 0 {
-		fmt.Println("Quantity must be greater than 0.")
-		return
-	}
-
-	command := fmt.Sprintf("ADD_TO_CART %d %d", productID, quantity)
-	err := sendCommand(conn, command)
-	if err != nil {
-		fmt.Println("Error sending command:", err)
-		return
-	}
-
-	lines, err := readMultiLineResponse(reader)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return
-	}
-
-	if len(lines) > 0 {
-		fmt.Println(lines[0])
-	}
-}
-
-func viewCart(conn net.Conn, reader *bufio.Reader) {
-	err := sendCommand(conn, "VIEW_CART")
-	if err != nil {
-		fmt.Println("Error sending command:", err)
-		return
-	}
-
-	lines, err := readMultiLineResponse(reader)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return
-	}
-
-	if len(lines) == 0 {
-		fmt.Println("Empty response from server.")
-		return
-	}
-
-	if strings.HasPrefix(lines[0], "ERROR") {
-		fmt.Println(lines[0])
-		return
-	}
-
-	if lines[0] != "OK" {
-		fmt.Println("Unexpected response:", lines[0])
-		return
-	}
-
-	if len(lines) == 1 {
-		fmt.Println("Cart is empty.")
-		return
-	}
-
-	fmt.Println()
-	fmt.Println("Cart contents:")
-	fmt.Println("ProductID | Name | Qty | UnitPrice | Subtotal")
-	fmt.Println("---------------------------------------------")
-
-	total := 0.0
-
-	for _, line := range lines[1:] {
-		item, err := parseCartItem(line)
-		if err != nil {
-			fmt.Println("Skipping invalid cart line:", line)
-			continue
-		}
-		subtotal := float64(item.Quantity) * item.UnitPrice
-		total += subtotal
-		fmt.Printf("%d | %s | %d | %.2f | %.2f\n",
-			item.ProductID, item.Name, item.Quantity, item.UnitPrice, subtotal)
-	}
-
-	fmt.Printf("Total: %.2f\n", total)
-}
-
-func placeOrder(conn net.Conn, reader *bufio.Reader) {
-	err := sendCommand(conn, "PLACE_ORDER")
-	if err != nil {
-		fmt.Println("Error sending command:", err)
-		return
-	}
-
-	lines, err := readMultiLineResponse(reader)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return
-	}
-
-	if len(lines) == 0 {
-		fmt.Println("Empty response from server.")
-		return
-	}
-
-	for _, line := range lines {
-		fmt.Println(line)
-	}
-}
-
-func showHelp(conn net.Conn, reader *bufio.Reader) {
-	err := sendCommand(conn, "HELP")
-	if err != nil {
-		fmt.Println("Error sending command:", err)
-		return
-	}
-
-	lines, err := readMultiLineResponse(reader)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return
-	}
-
-	if len(lines) == 0 {
-		fmt.Println("No help received from server.")
-		return
-	}
-
-	fmt.Println()
-	for _, line := range lines {
-		fmt.Println(line)
 	}
 }
 
@@ -357,31 +214,119 @@ func parseProduct(line string) (Product, error) {
 	}, nil
 }
 
-func parseCartItem(line string) (CartItem, error) {
-	parts := strings.Split(line, "|")
-	if len(parts) != 4 {
-		return CartItem{}, fmt.Errorf("invalid cart format")
+func addProduct(conn net.Conn, reader *bufio.Reader, console *bufio.Reader) {
+	id, ok := askInt(console, "Enter product ID: ")
+	if !ok {
+		return
 	}
 
-	productID, err := strconv.Atoi(parts[0])
+	fmt.Print("Enter product name: ")
+	name, _ := console.ReadString('\n')
+	name = strings.TrimSpace(name)
+
+	fmt.Print("Enter price: ")
+	priceStr, _ := console.ReadString('\n')
+	priceStr = strings.TrimSpace(priceStr)
+
+	stock, ok := askInt(console, "Enter stock: ")
+	if !ok {
+		return
+	}
+
+	command := fmt.Sprintf("ADD_PRODUCT %d %s %s %d", id, name, priceStr, stock)
+	err := sendCommand(conn, command)
 	if err != nil {
-		return CartItem{}, err
+		fmt.Println("Error sending command:", err)
+		return
 	}
 
-	quantity, err := strconv.Atoi(parts[2])
+	lines, err := readMultiLineResponse(reader)
 	if err != nil {
-		return CartItem{}, err
+		fmt.Println("Error reading response:", err)
+		return
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func updateStock(conn net.Conn, reader *bufio.Reader, console *bufio.Reader) {
+	id, ok := askInt(console, "Enter product ID: ")
+	if !ok {
+		return
 	}
 
-	unitPrice, err := strconv.ParseFloat(parts[3], 64)
+	newStock, ok := askInt(console, "Enter new stock: ")
+	if !ok {
+		return
+	}
+
+	command := fmt.Sprintf("UPDATE_STOCK %d %d", id, newStock)
+	err := sendCommand(conn, command)
 	if err != nil {
-		return CartItem{}, err
+		fmt.Println("Error sending command:", err)
+		return
 	}
 
-	return CartItem{
-		ProductID: productID,
-		Name:      parts[1],
-		Quantity:  quantity,
-		UnitPrice: unitPrice,
-	}, nil
+	lines, err := readMultiLineResponse(reader)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func updatePrice(conn net.Conn, reader *bufio.Reader, console *bufio.Reader) {
+	id, ok := askInt(console, "Enter product ID: ")
+	if !ok {
+		return
+	}
+
+	fmt.Print("Enter new price: ")
+	priceStr, _ := console.ReadString('\n')
+	priceStr = strings.TrimSpace(priceStr)
+
+	command := fmt.Sprintf("UPDATE_PRICE %d %s", id, priceStr)
+	err := sendCommand(conn, command)
+	if err != nil {
+		fmt.Println("Error sending command:", err)
+		return
+	}
+
+	lines, err := readMultiLineResponse(reader)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+}
+
+func listOrders(conn net.Conn, reader *bufio.Reader) {
+	err := sendCommand(conn, "LIST_ORDERS")
+	if err != nil {
+		fmt.Println("Error sending command:", err)
+		return
+	}
+
+	lines, err := readMultiLineResponse(reader)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return
+	}
+
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "OK") {
+		fmt.Println("No orders found.")
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("Order history:")
+	fmt.Println("--------------")
+	for _, line := range lines[1:] {
+		fmt.Println(line)
+	}
 }

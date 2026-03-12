@@ -35,14 +35,16 @@ type Cart struct {
 }
 
 type Store struct {
-	mu       sync.RWMutex
-	Products map[int]*Product
-	Orders   map[int]*Order
+	Mu          sync.RWMutex
+	Products    map[int]*Product
+	Orders      map[int]*Order
+	NextOrderID int
 }
 
 func NewStore() *Store {
 	return &Store{
-		Products: make(map[int]*Product),
-		Orders:   make(map[int]*Order),
+		Products:    make(map[int]*Product),
+		Orders:      make(map[int]*Order),
+		NextOrderID: 0,
 	}
 }

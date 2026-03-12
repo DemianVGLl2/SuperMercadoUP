@@ -119,6 +119,9 @@ func handleConn(conn net.Conn, store *models.Store) {
 }
 
 func sacarProductos(conn net.Conn, store *models.Store) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	fmt.Fprintln(conn, "OK")
 
 	if len(store.Products) == 0 {
@@ -136,7 +139,6 @@ func sacarProductos(conn net.Conn, store *models.Store) {
 func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, trozos []string) {
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: ADD_TO_CART <productID> <quantity>")
-		fmt.Fprintln(conn, "END")
 		return
 	}
 
@@ -145,26 +147,25 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 
 	if err1 != nil || err2 != nil {
 		fmt.Fprintln(conn, "ERROR datos invalidos")
-		fmt.Fprintln(conn, "END")
 		return
 	}
 
 	if cant <= 0 {
 		fmt.Fprintln(conn, "ERROR la cantidad debe ser mayor a 0")
-		fmt.Fprintln(conn, "END")
 		return
 	}
+
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
 
 	prod, ok := store.Products[pid]
 	if !ok {
 		fmt.Fprintln(conn, "ERROR ese producto no existe")
-		fmt.Fprintln(conn, "END")
 		return
 	}
 
 	if cant > prod.Stock {
 		fmt.Fprintln(conn, "ERROR no hay suficiente stock")
-		fmt.Fprintln(conn, "END")
 		return
 	}
 
@@ -174,7 +175,6 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 
 			if nuevaCant > prod.Stock {
 				fmt.Fprintln(conn, "ERROR no alcanza el stock para agregar mas")
-				fmt.Fprintln(conn, "END")
 				return
 			}
 
@@ -198,6 +198,9 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 }
 
 func verCarrito(conn net.Conn, store *models.Store, cart *models.Cart) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	fmt.Fprintln(conn, "OK")
 
 	if len(cart.Items) == 0 {
@@ -223,6 +226,9 @@ func verCarrito(conn net.Conn, store *models.Store, cart *models.Cart) {
 }
 
 func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	if len(cart.Items) == 0 {
 		fmt.Fprintln(conn, "ERROR el carrito esta vacio")
 		fmt.Fprintln(conn, "END")
@@ -252,7 +258,8 @@ func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
 		store.Products[item.ProductID].Stock -= item.Quantity
 	}
 
-	idOrden := len(store.Orders) + 1
+	store.NextOrderID++
+	idOrden := store.NextOrderID
 
 	orden := &models.Order{
 		ID:     idOrden,
@@ -289,6 +296,9 @@ func nombreValido(nombre string) bool {
 }
 
 func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	if len(trozos) < 5 {
 		fmt.Fprintln(conn, "ERROR usa: ADD_PRODUCT <id> <name> <price> <stock>")
 		fmt.Fprintln(conn, "END")
@@ -296,16 +306,15 @@ func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
 	}
 
 	id, err1 := strconv.Atoi(trozos[1])
-	precio, err2 := strconv.ParseFloat(trozos[3], 64)
-	stock, err3 := strconv.Atoi(trozos[4])
+	precio, err2 := strconv.ParseFloat(trozos[len(trozos)-2], 64)
+	stock, err3 := strconv.Atoi(trozos[len(trozos)-1])
+	nombre := strings.Join(trozos[2:len(trozos)-2], " ")
 
 	if err1 != nil || err2 != nil || err3 != nil {
 		fmt.Fprintln(conn, "ERROR datos invalidos")
 		fmt.Fprintln(conn, "END")
 		return
 	}
-
-	nombre := trozos[2]
 
 	if id <= 0 {
 		fmt.Fprintln(conn, "ERROR id invalido")
@@ -351,6 +360,9 @@ func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func actualizarStock(conn net.Conn, store *models.Store, trozos []string) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: UPDATE_STOCK <id> <newStock>")
 		fmt.Fprintln(conn, "END")
@@ -388,6 +400,9 @@ func actualizarStock(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func actualizarPrecio(conn net.Conn, store *models.Store, trozos []string) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: UPDATE_PRICE <id> <newPrice>")
 		fmt.Fprintln(conn, "END")
@@ -425,6 +440,9 @@ func actualizarPrecio(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func listarOrdenes(conn net.Conn, store *models.Store) {
+	store.Mu.RLock()
+	defer store.Mu.RUnlock()
+
 	fmt.Fprintln(conn, "OK")
 
 	if len(store.Orders) == 0 {
