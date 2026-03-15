@@ -164,8 +164,8 @@ func addToCart(conn net.Conn, reader *bufio.Reader, console *bufio.Reader) {
 		return
 	}
 
-	if len(lines) > 0 {
-		fmt.Println(lines[0])
+	for _, line := range lines {
+		fmt.Println(line)
 	}
 }
 
