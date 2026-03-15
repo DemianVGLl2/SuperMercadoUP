@@ -7,10 +7,11 @@ import (
 )
 
 type Product struct {
-	ID    int
-	Name  string
-	Price float64
-	Stock int
+	ID      int
+	Name    string
+	Price   float64
+	Stock   int
+	Blocked int
 }
 
 type OrderItem struct {

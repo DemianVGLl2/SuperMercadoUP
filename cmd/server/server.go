@@ -114,6 +114,7 @@ func handleConn(conn net.Conn, store *models.Store) {
 			fmt.Fprintln(conn, "END")
 
 		case "EXIT":
+			liberarCarrito(store, &cart)
 			fmt.Fprintln(conn, "OK Bye")
 			logger.Log("SERVER", "DISCONNECT", addr)
 			return
@@ -128,6 +129,8 @@ func handleConn(conn net.Conn, store *models.Store) {
 		log.Println("Read error:", err)
 	}
 
+	// Si el cliente se desconecta sin comprar, liberar bloqueos
+	liberarCarrito(store, &cart)
 	logger.Log("SERVER", "DISCONNECT", addr)
 }
 
@@ -143,7 +146,13 @@ func sacarProductos(conn net.Conn, store *models.Store) {
 	}
 
 	for _, p := range store.Products {
-		fmt.Fprintf(conn, "%d|%s|%.2f|%d\n", p.ID, p.Name, p.Price, p.Stock)
+		disponible := p.Stock - p.Blocked
+		if disponible < 0 {
+			disponible = 0
+		}
+
+		// Mostramos el stock disponible real, no el total físico
+		fmt.Fprintf(conn, "%d|%s|%.2f|%d\n", p.ID, p.Name, p.Price, disponible)
 	}
 
 	fmt.Fprintln(conn, "END")
@@ -152,6 +161,7 @@ func sacarProductos(conn net.Conn, store *models.Store) {
 func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, trozos []string) {
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: ADD_TO_CART <productID> <quantity>")
+		fmt.Fprintln(conn, "END")
 		return
 	}
 
@@ -160,11 +170,13 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 
 	if err1 != nil || err2 != nil {
 		fmt.Fprintln(conn, "ERROR datos invalidos")
+		fmt.Fprintln(conn, "END")
 		return
 	}
 
 	if cant <= 0 {
 		fmt.Fprintln(conn, "ERROR la cantidad debe ser mayor a 0")
+		fmt.Fprintln(conn, "END")
 		return
 	}
 
@@ -174,26 +186,24 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 	prod, ok := store.Products[pid]
 	if !ok {
 		fmt.Fprintln(conn, "ERROR ese producto no existe")
+		fmt.Fprintln(conn, "END")
 		return
 	}
 
-	if cant > prod.Stock {
-		fmt.Fprintln(conn, "ERROR no hay suficiente stock")
+	disponible := prod.Stock - prod.Blocked
+	if cant > disponible {
+		fmt.Fprintln(conn, "ERROR producto bloqueado o sin stock disponible")
+		fmt.Fprintln(conn, "END")
 		return
 	}
 
 	for i := range cart.Items {
 		if cart.Items[i].ProductID == pid {
-			nuevaCant := cart.Items[i].Quantity + cant
+			cart.Items[i].Quantity += cant
+			prod.Blocked += cant
 
-			if nuevaCant > prod.Stock {
-				fmt.Fprintln(conn, "ERROR no alcanza el stock para agregar mas")
-				return
-			}
-
-			cart.Items[i].Quantity = nuevaCant
-			logger.Log("CLIENT", "ADD_TO_CART", fmt.Sprintf("product=%d qty=%d", pid, cant))
-			fmt.Fprintln(conn, "OK producto agregado al carrito")
+			logger.Log("CLIENT", "ADD_TO_CART", fmt.Sprintf("product=%d qty=%d blocked=%d", pid, cant, prod.Blocked))
+			fmt.Fprintln(conn, "OK producto agregado al carrito y bloqueado")
 			fmt.Fprintln(conn, "END")
 			return
 		}
@@ -205,8 +215,10 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 		UnitPrice: prod.Price,
 	})
 
-	logger.Log("CLIENT", "ADD_TO_CART", fmt.Sprintf("product=%d qty=%d", pid, cant))
-	fmt.Fprintln(conn, "OK producto agregado al carrito")
+	prod.Blocked += cant
+
+	logger.Log("CLIENT", "ADD_TO_CART", fmt.Sprintf("product=%d qty=%d blocked=%d", pid, cant, prod.Blocked))
+	fmt.Fprintln(conn, "OK producto agregado al carrito y bloqueado")
 	fmt.Fprintln(conn, "END")
 }
 
@@ -258,6 +270,7 @@ func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
 			return
 		}
 
+		// Como ya está bloqueado para este carrito, aquí solo validamos stock físico
 		if item.Quantity > prod.Stock {
 			fmt.Fprintf(conn, "ERROR no hay stock suficiente para %s\n", prod.Name)
 			fmt.Fprintln(conn, "END")
@@ -268,15 +281,24 @@ func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
 	}
 
 	for _, item := range cart.Items {
-		store.Products[item.ProductID].Stock -= item.Quantity
+		prod := store.Products[item.ProductID]
+		prod.Stock -= item.Quantity
+		prod.Blocked -= item.Quantity
+
+		if prod.Blocked < 0 {
+			prod.Blocked = 0
+		}
 	}
 
 	store.NextOrderID++
 	idOrden := store.NextOrderID
 
+	itemsCopia := make([]models.OrderItem, len(cart.Items))
+	copy(itemsCopia, cart.Items)
+
 	orden := &models.Order{
 		ID:     idOrden,
-		Items:  cart.Items,
+		Items:  itemsCopia,
 		Total:  total,
 		Status: models.Completed,
 	}
@@ -291,6 +313,29 @@ func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
 	fmt.Fprintf(conn, "Total: %.2f\n", orden.Total)
 	fmt.Fprintf(conn, "Status: %s\n", orden.Status)
 	fmt.Fprintln(conn, "END")
+}
+
+func liberarCarrito(store *models.Store, cart *models.Cart) {
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
+
+	if len(cart.Items) == 0 {
+		return
+	}
+
+	for _, item := range cart.Items {
+		prod, ok := store.Products[item.ProductID]
+		if !ok {
+			continue
+		}
+
+		prod.Blocked -= item.Quantity
+		if prod.Blocked < 0 {
+			prod.Blocked = 0
+		}
+	}
+
+	cart.Items = nil
 }
 
 func nombreValido(nombre string) bool {
@@ -360,10 +405,11 @@ func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
 	}
 
 	store.Products[id] = &models.Product{
-		ID:    id,
-		Name:  nombre,
-		Price: precio,
-		Stock: stock,
+		ID:      id,
+		Name:    nombre,
+		Price:   precio,
+		Stock:   stock,
+		Blocked: 0,
 	}
 
 	logger.Log("ADMIN", "ADD_PRODUCT", fmt.Sprintf("id=%d name=%s price=%.2f stock=%d", id, nombre, precio, stock))
@@ -400,6 +446,12 @@ func actualizarStock(conn net.Conn, store *models.Store, trozos []string) {
 	prod, ok := store.Products[id]
 	if !ok {
 		fmt.Fprintln(conn, "ERROR el producto no existe")
+		fmt.Fprintln(conn, "END")
+		return
+	}
+
+	if nuevoStock < prod.Blocked {
+		fmt.Fprintln(conn, "ERROR no puedes poner stock menor que la cantidad bloqueada")
 		fmt.Fprintln(conn, "END")
 		return
 	}
