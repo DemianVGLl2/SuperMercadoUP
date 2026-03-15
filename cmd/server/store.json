@@ -1,0 +1,1 @@
+{"Products":{"1":{"ID":1,"Name":"Leche","Price":28.5,"Stock":10},"2":{"ID":2,"Name":"Pan","Price":15,"Stock":8},"3":{"ID":3,"Name":"Huevos","Price":42,"Stock":8}},"Orders":{"1":{"ID":1,"Items":[{"ProductID":3,"Quantity":4,"UnitPrice":42}],"Total":168,"Status":"COMPLETED"}},"NextOrderID":1}

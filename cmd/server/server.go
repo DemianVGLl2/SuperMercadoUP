@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"unicode"
@@ -18,12 +20,23 @@ func main() {
 		log.Fatal("Error iniciando logger: ", err)
 	}
 
-	store := models.NewStore()
+	store, err := models.LoadStore("store.json")
 
-	// productos de prueba
-	store.Products[1] = &models.Product{ID: 1, Name: "Leche", Price: 28.5, Stock: 10}
-	store.Products[2] = &models.Product{ID: 2, Name: "Pan", Price: 15.0, Stock: 8}
-	store.Products[3] = &models.Product{ID: 3, Name: "Huevos", Price: 42.0, Stock: 12}
+	if err != nil {
+		store = models.NewStore()
+		store.Products[1] = &models.Product{ID: 1, Name: "Leche", Price: 28.5, Stock: 10}
+		store.Products[2] = &models.Product{ID: 2, Name: "Pan", Price: 15.0, Stock: 8}
+		store.Products[3] = &models.Product{ID: 3, Name: "Huevos", Price: 42.0, Stock: 12}
+	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+
+	go func() {
+		<-c
+		store.SaveStore("store.json")
+		os.Exit(0)
+	}()
 
 	listener, err := net.Listen("tcp", "localhost:8000")
 	if err != nil {
@@ -119,8 +132,8 @@ func handleConn(conn net.Conn, store *models.Store) {
 }
 
 func sacarProductos(conn net.Conn, store *models.Store) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	fmt.Fprintln(conn, "OK")
 
@@ -155,8 +168,8 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 		return
 	}
 
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	prod, ok := store.Products[pid]
 	if !ok {
@@ -198,8 +211,8 @@ func agregarAlCarrito(conn net.Conn, store *models.Store, cart *models.Cart, tro
 }
 
 func verCarrito(conn net.Conn, store *models.Store, cart *models.Cart) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	fmt.Fprintln(conn, "OK")
 
@@ -226,8 +239,8 @@ func verCarrito(conn net.Conn, store *models.Store, cart *models.Cart) {
 }
 
 func hacerOrden(conn net.Conn, store *models.Store, cart *models.Cart) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	if len(cart.Items) == 0 {
 		fmt.Fprintln(conn, "ERROR el carrito esta vacio")
@@ -296,8 +309,8 @@ func nombreValido(nombre string) bool {
 }
 
 func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	if len(trozos) < 5 {
 		fmt.Fprintln(conn, "ERROR usa: ADD_PRODUCT <id> <name> <price> <stock>")
@@ -360,8 +373,8 @@ func agregarProducto(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func actualizarStock(conn net.Conn, store *models.Store, trozos []string) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: UPDATE_STOCK <id> <newStock>")
@@ -400,8 +413,8 @@ func actualizarStock(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func actualizarPrecio(conn net.Conn, store *models.Store, trozos []string) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	if len(trozos) != 3 {
 		fmt.Fprintln(conn, "ERROR usa: UPDATE_PRICE <id> <newPrice>")
@@ -440,8 +453,8 @@ func actualizarPrecio(conn net.Conn, store *models.Store, trozos []string) {
 }
 
 func listarOrdenes(conn net.Conn, store *models.Store) {
-	store.Mu.RLock()
-	defer store.Mu.RUnlock()
+	store.Mu.Lock()
+	defer store.Mu.Unlock()
 
 	fmt.Fprintln(conn, "OK")
 
